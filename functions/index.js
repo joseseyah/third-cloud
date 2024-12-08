@@ -101,20 +101,40 @@ exports.updatePrayerTimes = functions.pubsub.schedule("every 24 hours")
 
 // Cloud Function to add a new city
 exports.addCity = functions.https.onCall(async (data, context) => {
-    const { city, country } = data;
+  const { city, country } = data;
 
-    if (!city || !country) {
-        throw new functions.https.HttpsError("invalid-argument", "City and country are required");
-    }
+  if (!city || !country) {
+      throw new functions.https.HttpsError("invalid-argument", "City and country are required");
+  }
 
-    try {
-        // Add the new city to the Firestore locations collection
-        await db.collection("locations").doc(city).set({ city, country });
-        console.log(`City ${city}, ${country} added successfully`);
-        return { success: true, message: `City ${city}, ${country} added successfully` };
-    } catch (error) {
-        console.error(`Failed to add city: ${error}`);
-        throw new functions.https.HttpsError("internal", `Failed to add city: ${error.message}`);
-    }
+  try {
+      // Add the new city to Firestore locations collection
+      await db.collection("locations").doc(city).set({ city, country });
+
+      // Fetch prayer times for the new city
+      const url = `https://api.aladhan.com/v1/calendarByCity/${currentYear}/${currentMonth}?city=${city}&country=${country}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (!data || !data.data) {
+          throw new Error("Failed to fetch prayer times from API");
+      }
+
+      // Save prayer times to Firestore
+      await db.collection("prayerTimes").doc(city).set({
+          city,
+          country,
+          month: currentMonth,
+          year: currentYear,
+          prayerTimes: data.data,
+      });
+
+      console.log(`City ${city}, ${country} added successfully and prayer times fetched.`);
+      return { success: true, message: `City ${city}, ${country} added successfully.` };
+  } catch (error) {
+      console.error(`Failed to add city or fetch prayer times: ${error}`);
+      throw new functions.https.HttpsError("internal", `Failed to add city: ${error.message}`);
+  }
 });
+
 
