@@ -108,8 +108,17 @@ exports.addCity = functions.https.onCall(async (data, context) => {
   }
 
   try {
-      // Add the new city to Firestore locations collection
+      // Check if the city already exists in the "locations" Firestore collection
+      const cityDoc = await db.collection("locations").doc(city).get();
+
+      if (cityDoc.exists) {
+          console.log(`City ${city}, ${country} already exists in the database.`);
+          return { success: false, message: `City ${city}, ${country} already exists.` };
+      }
+
+      // Add the new city to the Firestore "locations" collection
       await db.collection("locations").doc(city).set({ city, country });
+      console.log(`City ${city}, ${country} added to locations.`);
 
       // Fetch prayer times for the new city
       const url = `https://api.aladhan.com/v1/calendarByCity/${currentYear}/${currentMonth}?city=${city}&country=${country}`;
@@ -120,7 +129,7 @@ exports.addCity = functions.https.onCall(async (data, context) => {
           throw new Error("Failed to fetch prayer times from API");
       }
 
-      // Save prayer times to Firestore
+      // Save the prayer times to Firestore
       await db.collection("prayerTimes").doc(city).set({
           city,
           country,
@@ -136,5 +145,3 @@ exports.addCity = functions.https.onCall(async (data, context) => {
       throw new functions.https.HttpsError("internal", `Failed to add city: ${error.message}`);
   }
 });
-
-
