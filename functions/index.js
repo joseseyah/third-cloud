@@ -92,3 +92,44 @@ exports.addCity = functions.https.onCall(async (data, context) => {
         .https.HttpsError("internal", `Failed add city: ${error.message}`);
   }
 });
+
+
+exports.updateManchesterISOCPrayerTimes = functions.pubsub
+    .schedule("every 24 hours").onRun(async (context) => {
+      const url = "http://isoc.great-site.net";
+      try {
+        // Fetch prayer times from the API
+        const response = await fetch(url);
+        const data = await response.json();
+
+        // Ensure the response contains the expected fields
+        if (!data.fajr ||
+          !data.dhuhr ||
+          !data.asr ||
+          !data.maghrib ||
+          !data.isha ||
+          !data.date) {
+          throw new Error("Invalid data structure from the API");
+        }
+        // Store the prayer times in Firestore for Manchester ISOC
+        await db.collection("Mosques").doc("Manchester Isoc").set({
+          city: "Manchester",
+          mosque: "ISOC",
+          date: data.date,
+          prayerTimes: {
+            fajr: data.fajr,
+            sunrise: data.sunrise,
+            dhuhr: data.dhuhr,
+            asr: data.asr,
+            maghrib: data.maghrib,
+            isha: data.isha,
+          },
+        });
+
+        console.log("Prayer times for Manchester ISOC updated successfully");
+      } catch (error) {
+        console.error(`Failed to update prayer times: ${error}`);
+      }
+
+      return null;
+    });
