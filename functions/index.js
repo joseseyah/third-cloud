@@ -93,43 +93,102 @@ exports.addCity = functions.https.onCall(async (data, context) => {
   }
 });
 
+/**
+ * Calculates midnight time based on Maghrib and next day's Fajr times.
+ * @param {string} maghrib - Maghrib time in HH:mm format.
+ * @param {string} fajrNextDay - Fajr time for the next day in HH:mm format.
+ * @return {string} Midnight time in HH:mm format.
+ */
+function calculateMidnight(maghrib, fajrNextDay) {
+  const maghribTime = new Date(`1970-01-01T${maghrib}:00Z`);
+  const fajrTime = new Date(`1970-01-02T${fajrNextDay}:00Z`);
+  const midnight = new Date((maghribTime.getTime() + fajrTime.getTime()) / 2);
+  return midnight.toISOString().slice(11, 16); // Return HH:mm format
+}
 
-exports.updateManchesterISOCPrayerTimes = functions.pubsub
-    .schedule("every 24 hours").onRun(async (context) => {
-      const url = "http://isoc.great-site.net";
+/**
+ * Calculates the last third of the night
+ * @param {string} maghrib - Maghrib time in HH:mm format.
+ * @param {string} fajrNextDay - Fajr time for the next day in HH:mm format.
+ * @return {string} Last third of the night time in HH:mm format.
+ */
+function calculateLastThird(maghrib, fajrNextDay) {
+  const maghribTime = new Date(`1970-01-01T${maghrib}:00Z`);
+  const fajrTime = new Date(`1970-01-02T${fajrNextDay}:00Z`);
+  const duration = fajrTime - maghribTime;
+  const lastThirdStart = new Date(fajrTime.getTime() - duration / 3);
+  return lastThirdStart.toISOString().slice(11, 16); // Return HH:mm format
+}
+
+// Cloud Function to fetch and process prayer times
+exports.fetchLondonUnifiedTimetable = functions.pubsub
+    .schedule("0 0 * * *") // Runs every midnight
+    .timeZone("Europe/London") // Set to London time
+    .onRun(async () => {
       try {
-        // Fetch prayer times from the API
+        const today = new Date();
+        const tomorrow = new Date(today);
+        tomorrow.setDate(today.getDate() + 1);
+
+        const todayDate = today.toISOString().split("T")[0];
+        const tomorrowDate = tomorrow.toISOString().split("T")[0];
+
+        const url = `https://www.londonprayertimes.com/api/times/?format=json&key=f31cd22f-be6a-4410-bd20-cdd3b9923cff&date=${todayDate},${tomorrowDate}`;
         const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch data: ${response.statusText}`);
+        }
+
         const data = await response.json();
 
-        // Ensure the response contains the expected fields
-        if (!data.fajr ||
-          !data.dhuhr ||
-          !data.asr ||
-          !data.maghrib ||
-          !data.isha ||
-          !data.date) {
-          throw new Error("Invalid data structure from the API");
+        // Extract today's and tomorrow's data
+        const todayData = data.find((entry) => entry.date === todayDate);
+        const tomorrowData = data.find((entry) => entry.date === tomorrowDate);
+
+        if (!todayData || !tomorrowData) {
+          throw new Error("Failed to retrieve both PTs");
         }
-        // Store the prayer times in Firestore for Manchester ISOC
-        await db.collection("Mosques").doc("Manchester Isoc").set({
-          city: "Manchester",
-          mosque: "ISOC",
-          date: data.date,
-          prayerTimes: {
-            fajr: data.fajr,
-            sunrise: data.sunrise,
-            dhuhr: data.dhuhr,
-            asr: data.asr,
-            maghrib: data.maghrib,
-            isha: data.isha,
+
+        const maghribTime = todayData.magrib;
+        const fajrTimeNextDay = tomorrowData.fajr;
+        const midnight = calculateMidnight(maghribTime, fajrTimeNextDay);
+        const lastThird = calculateLastThird(maghribTime, fajrTimeNextDay);
+
+        // Format data
+        const formattedData = [
+          {
+            d_date: todayData.date,
+            fajr_begins: todayData.fajr,
+            fajr_jamah: todayData.fajr_jamat || "",
+            sunrise: todayData.sunrise,
+            zuhr_begins: todayData.dhuhr,
+            zuhr_jamah: todayData.dhuhr_jamat || "",
+            asr_mithl_1: todayData.asr,
+            asr_mithl_2: todayData.asr_2 || todayData.asr,
+            maghrib_begins: todayData.magrib,
+            isha_begins: todayData.isha,
+            isha_jamah: todayData.isha_jamat || "",
+            midnight: midnight,
+            last_third: lastThird,
+            hijri_date: "0",
+            is_ramadan: "0",
           },
-        });
+        ];
 
-        console.log("Prayer times for Manchester ISOC updated successfully");
+        // Save to Firestore
+        await db
+            .collection("Mosques")
+            .doc("East London Mosque")
+            .set({
+              city: "London",
+              prayerTimes: formattedData,
+            }, {merge: true});
+
+        console.log("Prayer times updated ELM");
       } catch (error) {
-        console.error(`Failed to update prayer times: ${error}`);
+        console.error("Error fetching or storing prayer times:", error);
       }
-
-      return null;
     });
+
+

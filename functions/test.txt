@@ -1,0 +1,14 @@
+headers: {
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                          "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                          "Chrome/114.0.0.0 Safari/537.36",
+            "Referer": "https://cheadlemasjid.org/",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+            "Cookie": "PHPSESSID=9jquppfjelhn4qbndsk3j9sccqo",
+          }
